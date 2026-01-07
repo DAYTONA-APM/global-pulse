@@ -18,43 +18,53 @@ function App() {
   const globeEl = useRef<any>(null);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8080/ws');
+    // --- SMART URL DETECTION ---
+    // If we are on our local computer, use localhost. 
+    // If we are on Vercel, use your Railway URL.
+    const BACKEND_URL = window.location.hostname === 'localhost' 
+      ? 'ws://localhost:8080/ws' 
+      : 'wss://global-pulse-production.up.railway.app/ws';
+
+    console.log("Connecting to:", BACKEND_URL);
+    
+    const socket = new WebSocket(BACKEND_URL);
+    // --- END SMART URL DETECTION ---
 
     socket.onmessage = (event) => {
-    const data: PingData = JSON.parse(event.data);
-    
-    // 1. Determine Status Colors
-    let statusColor = '#444444'; // Default Gray (Offline)
-    if (data.latency !== -1) {
-      statusColor = data.latency < 150 ? '#00f2ff' : '#ff3300';
-    }
-
-    // 2. Update Points (Always show them)
-    setPoints(prev => {
-      const filtered = prev.filter(p => p.name !== data.name);
-      return [...filtered, {
-        ...data,
-        size: data.latency === -1 ? 0.1 : Math.max(0.2, data.latency / 400),
-        color: statusColor,
-        label: data.latency === -1 ? `${data.name}: BLOCKED/OFFLINE` : `${data.name}: ${data.latency}ms`
-      }];
-    });
-
-    // 3. Update Arcs (Only show arcs for active connections to keep the globe clean)
-    setArcs(prev => {
-      const filtered = prev.filter(a => a.target !== data.name);
-      if (data.latency === -1) return filtered; // No line if it's down
+      const data: PingData = JSON.parse(event.data);
       
-      return [...filtered, {
-        target: data.name,
-        startLat: HOME_COORDS.lat,
-        startLng: HOME_COORDS.lng,
-        endLat: data.lat,
-        endLng: data.lng,
-        color: statusColor
-      }];
-    });
-  };
+      let statusColor = '#444444'; 
+      if (data.latency !== -1) {
+        statusColor = data.latency < 150 ? '#00f2ff' : '#ff3300';
+      }
+
+      setPoints(prev => {
+        const filtered = prev.filter(p => p.name !== data.name);
+        return [...filtered, {
+          ...data,
+          size: data.latency === -1 ? 0.1 : Math.max(0.2, data.latency / 400),
+          color: statusColor,
+          label: data.latency === -1 ? `${data.name}: BLOCKED/OFFLINE` : `${data.name}: ${data.latency}ms`
+        }];
+      });
+
+      setArcs(prev => {
+        const filtered = prev.filter(a => a.target !== data.name);
+        if (data.latency === -1) return filtered; 
+        
+        return [...filtered, {
+          target: data.name,
+          startLat: HOME_COORDS.lat,
+          startLng: HOME_COORDS.lng,
+          endLat: data.lat,
+          endLng: data.lng,
+          color: statusColor
+        }];
+      });
+    };
+
+    // Error handling to see why it fails in the console
+    socket.onerror = (err) => console.error("WebSocket Error:", err);
 
     return () => socket.close();
   }, []);
